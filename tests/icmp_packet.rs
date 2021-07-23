@@ -6,7 +6,6 @@ mod tests {
     use pktparse::ip::IPProtocol;
     use pktparse::ipv4::IPv4Header;
     use pktparse::{ethernet, ipv4};
-    use std::net::Ipv4Addr;
 
     #[test]
     fn ipfrag_packet() {
@@ -41,8 +40,8 @@ mod tests {
             ttl: 64,
             protocol: IPProtocol::ICMP,
             chksum: 0x22ed,
-            source_addr: Ipv4Addr::new(10, 10, 1, 135),
-            dest_addr: Ipv4Addr::new(10, 10, 1, 180),
+            source_addr: 0x0a0a0187,
+            dest_addr: 0x0a0a01b4
         };
         let parsed_eth_frame = ethernet::parse_ethernet_frame(&bytes);
         if let Ok((remaining_data, eth_frame)) = parsed_eth_frame {
@@ -51,10 +50,10 @@ mod tests {
             if let Ok((_remaining_data, ip_hdr)) = parsed_ip_hdr {
                 assert_eq!(ip_hdr, ip_expectation);
             } else {
-                assert!(false);
+                panic!("can't parse ip header");
             }
         } else {
-            assert!(false);
+            panic!("can't parse ethernet frame");
         }
     }
 }

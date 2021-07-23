@@ -2,12 +2,9 @@
 
 use crate::ip::{self, IPProtocol};
 use nom::bits;
-use nom::bytes;
 use nom::error::Error;
 use nom::number;
 use nom::IResult;
-use std::convert::TryFrom;
-use std::net::Ipv6Addr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -19,14 +16,8 @@ pub struct IPv6Header {
     pub length: u16,
     pub next_header: IPProtocol,
     pub hop_limit: u8,
-    pub source_addr: Ipv6Addr,
-    pub dest_addr: Ipv6Addr,
-}
-
-pub(crate) fn address(input: &[u8]) -> IResult<&[u8], Ipv6Addr> {
-    let (input, ipv6) = bytes::streaming::take(16u8)(input)?;
-
-    Ok((input, Ipv6Addr::from(<[u8; 16]>::try_from(ipv6).unwrap())))
+    pub source_addr: u128,
+    pub dest_addr: u128,
 }
 
 /*
@@ -45,8 +36,8 @@ pub fn parse_ipv6_header(input: &[u8]) -> IResult<&[u8], IPv6Header> {
     let (input, length) = number::streaming::be_u16(input)?;
     let (input, next_header) = ip::protocol(input)?;
     let (input, hop_limit) = number::streaming::be_u8(input)?;
-    let (input, source_addr) = address(input)?;
-    let (input, dest_addr) = address(input)?;
+    let (input, source_addr) = number::streaming::be_u128(input)?;
+    let (input, dest_addr) = number::streaming::be_u128(input)?;
 
     Ok((
         input,
@@ -67,9 +58,8 @@ pub fn parse_ipv6_header(input: &[u8]) -> IResult<&[u8], IPv6Header> {
 #[cfg(test)]
 mod tests {
     use super::{ip::protocol, parse_ipv6_header, IPProtocol, IPv6Header};
-    use std::net::Ipv6Addr;
 
-    const EMPTY_SLICE: &'static [u8] = &[];
+    const EMPTY_SLICE: &[u8] = &[];
     macro_rules! mk_protocol_test {
         ($func_name:ident, $bytes:expr, $correct_proto:expr) => {
             #[test]
@@ -109,12 +99,8 @@ mod tests {
             length: 1400,
             next_header: IPProtocol::ICMP6,
             hop_limit: 5,
-            source_addr: Ipv6Addr::new(
-                0x2001, 0xdb8, 0x5cf8, 0x1aa8, 0x2481, 0x61e6, 0x5ac6, 0x3e0,
-            ),
-            dest_addr: Ipv6Addr::new(
-                0x2001, 0xdb8, 0x7890, 0x2ae9, 0x908f, 0xa9f4, 0x2f4a, 0x9b80,
-            ),
+            source_addr: 0x20010db85cf81aa8248161e65ac603e0,
+            dest_addr: 0x20010db878902ae9908fa9f42f4a9b80,
         };
         assert_eq!(parse_ipv6_header(&bytes), Ok((EMPTY_SLICE, expectation)));
     }

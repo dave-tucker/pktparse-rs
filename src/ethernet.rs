@@ -3,7 +3,7 @@
 use nom::bytes;
 use nom::number;
 use nom::IResult;
-use std::convert::TryFrom;
+use core::convert::TryFrom;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -207,7 +207,7 @@ mod tests {
         mac_address, parse_ethernet_frame, parse_ethertype, EtherType, EthernetFrame, MacAddress,
     };
 
-    const EMPTY_SLICE: &'static [u8] = &[];
+    const EMPTY_SLICE: &[u8] = &[];
 
     #[test]
     fn mac_address_works() {

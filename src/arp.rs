@@ -2,11 +2,9 @@
 
 use nom::number;
 use nom::IResult;
-use std::net::Ipv4Addr;
 
 use crate::ethernet;
 use crate::ethernet::MacAddress;
-use crate::ipv4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -70,10 +68,10 @@ pub struct ArpPacket {
     pub operation: Operation,
 
     pub src_mac: MacAddress,
-    pub src_addr: Ipv4Addr,
+    pub src_addr: u32,
 
     pub dest_mac: MacAddress,
-    pub dest_addr: Ipv4Addr,
+    pub dest_addr: u32,
 }
 
 fn parse_hw_addr_type(input: &[u8]) -> IResult<&[u8], HardwareAddressType> {
@@ -101,9 +99,9 @@ pub fn parse_arp_pkt(input: &[u8]) -> IResult<&[u8], ArpPacket> {
     let (input, proto_addr_size) = number::streaming::be_u8(input)?;
     let (input, operation) = parse_operation(input)?;
     let (input, src_mac) = ethernet::mac_address(input)?;
-    let (input, src_addr) = ipv4::address(input)?;
+    let (input, src_addr) = number::streaming::be_u32(input)?;
     let (input, dest_mac) = ethernet::mac_address(input)?;
-    let (input, dest_addr) = ipv4::address(input)?;
+    let (input, dest_addr) = number::streaming::be_u32(input)?;
 
     Ok((
         input,
@@ -126,9 +124,8 @@ mod tests {
     use super::{
         parse_arp_pkt, ArpPacket, HardwareAddressType, MacAddress, Operation, ProtocolAddressType,
     };
-    use std::net::Ipv4Addr;
 
-    const EMPTY_SLICE: &'static [u8] = &[];
+    const EMPTY_SLICE: &[u8] = &[];
 
     #[test]
     fn arp_packet_works() {
@@ -153,10 +150,10 @@ mod tests {
             operation: Operation::Request,
 
             src_mac: MacAddress([0x00, 0x1b, 0x21, 0x0f, 0x91, 0x9b]),
-            src_addr: Ipv4Addr::new(10, 10, 1, 135),
+            src_addr: 0x0a0a0187,
 
             dest_mac: MacAddress([0xde, 0xad, 0xc0, 0x00, 0xff, 0xee]),
-            dest_addr: Ipv4Addr::new(192, 168, 1, 253),
+            dest_addr: 0xc0a801fd,
         };
         assert_eq!(parse_arp_pkt(&bytes), Ok((EMPTY_SLICE, expectation)));
     }

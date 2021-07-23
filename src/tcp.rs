@@ -2,6 +2,7 @@
 
 use nom::bits;
 use nom::error::{Error, ErrorKind};
+use nom::bytes;
 use nom::number;
 use nom::sequence;
 use nom::{Err, IResult, Needed};
@@ -66,8 +67,8 @@ pub struct WindowScale {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct TcpHeader {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TcpHeader<'a> {
     pub source_port: u16,
     pub dest_port: u16,
     pub sequence_no: u32,
@@ -83,7 +84,7 @@ pub struct TcpHeader {
     pub window: u16,
     pub checksum: u16,
     pub urgent_pointer: u16,
-    pub options: Option<Vec<TcpOption>>,
+    pub options: Option<TcpOptionIterator<'a>>,
 }
 
 fn dataof_res_flags(input: &[u8]) -> IResult<&[u8], (u8, u8, u8)> {
@@ -152,24 +153,34 @@ fn tcp_parse_option(input: &[u8]) -> IResult<&[u8], TcpOption> {
     }
 }
 
-fn tcp_parse_options(i: &[u8]) -> IResult<&[u8], Vec<TcpOption>> {
-    let mut left = i;
-    let mut options: Vec<TcpOption> = vec![];
-    loop {
-        match tcp_parse_option(left) {
-            Ok((l, opt)) => {
-                left = l;
-                options.push(opt);
+fn parse_options(i: &[u8], len: usize) -> IResult<&[u8], &[u8]> {
+    bytes::streaming::take(len)(i)
+}
 
-                if let TcpOption::EndOfOptions = opt {
-                    break;
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct TcpOptionIterator<'a> {
+    buffer: &'a [u8],
+    pos: usize,
+    end: usize,
+}
+
+impl<'a> Iterator for TcpOptionIterator<'a> {
+    type Item = TcpOption;
+
+    fn next(& mut self) -> Option<Self::Item> {
+        if self.pos <= self.end {
+            let pos = self.pos;
+            match tcp_parse_option(&self.buffer[pos..]) {
+                Ok((p, opt)) => {
+                    self.pos = self.end - p.len();
+                    Some(opt)
                 }
+                Err(_e) => None
             }
-            Err(e) => return Err(e),
+        } else {
+            None
         }
     }
-
-    Ok((left, options))
 }
 
 pub fn parse_tcp_header(i: &[u8]) -> IResult<&[u8], TcpHeader> {
@@ -177,21 +188,18 @@ pub fn parse_tcp_header(i: &[u8]) -> IResult<&[u8], TcpHeader> {
         Ok((left, mut tcp_header)) => {
             // Offset in words (at least 5)
             if tcp_header.data_offset > 5 {
-                let options_length = ((tcp_header.data_offset - 5) * 4) as usize;
-                if options_length <= left.len() {
-                    if let Ok((_, options)) = tcp_parse_options(&left[0..options_length]) {
-                        tcp_header.options = Some(options);
-                        return Ok((&left[options_length..], tcp_header));
+                let options_length = ((tcp_header.data_offset - 5) * 4) as usize;                
+                match parse_options(left, options_length) {
+                    Ok((_, raw_options)) => {
+                        tcp_header.options = Some(TcpOptionIterator{buffer:raw_options, pos:0, end:options_length-1});
+                        Ok((&left[options_length..], tcp_header))
                     }
-                    Ok((&left[options_length..], tcp_header))
-                } else {
-                    Err(Err::Incomplete(Needed::new(options_length - left.len())))
+                    _e => Err(Err::Incomplete(Needed::new(options_length))),
                 }
             } else {
                 Ok((left, tcp_header))
             }
         }
-
         e => e,
     }
 }
@@ -201,7 +209,7 @@ mod tests {
 
     use super::*;
 
-    const EMPTY_SLICE: &'static [u8] = &[];
+    const EMPTY_SLICE: &[u8] = &[];
 
     #[test]
     fn test_tcp_parse() {
@@ -233,7 +241,6 @@ mod tests {
             urgent_pointer: 0,
             options: None,
         };
-
         assert_eq!(parse_tcp_header(&bytes), Ok((EMPTY_SLICE, expectation)));
     }
 }

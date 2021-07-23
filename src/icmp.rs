@@ -1,8 +1,7 @@
 //! Handles parsing of ICMP
 
-use crate::ipv4::{address, parse_ipv4_header, IPv4Header};
+use crate::ipv4::{parse_ipv4_header, IPv4Header};
 use nom::{bytes::streaming::take, number, IResult};
-use std::net::Ipv4Addr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -172,7 +171,7 @@ pub enum IcmpData {
         packet: IcmpPayloadPacket,
     },
     Redirect {
-        gateway: Ipv4Addr,
+        gateway: u32,
         header: IPv4Header,
         packet: IcmpPayloadPacket,
     },
@@ -208,7 +207,7 @@ fn parse_icmp_unreachable_data(input: &[u8]) -> IResult<&[u8], IcmpData> {
 }
 
 fn parse_icmp_redirect_data(input: &[u8]) -> IResult<&[u8], IcmpData> {
-    let (input, gateway) = address(input)?;
+    let (input, gateway) = number::streaming::be_u32(input)?;
     let (input, (header, packet)) = parse_ipv4_header_and_packet(input)?;
 
     Ok((
@@ -265,9 +264,8 @@ mod tests {
     use crate::ip::IPProtocol;
     use crate::ipv4::IPv4Header;
     use nom::{Err, Needed};
-    use std::net::Ipv4Addr;
 
-    const EMPTY_SLICE: &'static [u8] = &[];
+    const EMPTY_SLICE: &[u8] = &[];
 
     fn get_icmp_ipv4_header_and_packet() -> (IPv4Header, IcmpPayloadPacket) {
         (
@@ -282,14 +280,14 @@ mod tests {
                 ttl: 64,
                 protocol: IPProtocol::ICMP,
                 chksum: 0x22ed,
-                source_addr: Ipv4Addr::new(10, 10, 1, 135),
-                dest_addr: Ipv4Addr::new(10, 10, 1, 180),
+                source_addr: 0x0a0a0187,
+                dest_addr: 0x0a0a01b4,
             },
             IcmpPayloadPacket([0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]),
         )
     }
 
-    fn get_icmp_redirect_data() -> (Vec<u8>, IcmpHeader) {
+    fn get_icmp_redirect_data() -> ([u8; 36], IcmpHeader) {
         let bytes = [
             5, // type
             1, // code
@@ -314,16 +312,16 @@ mod tests {
             code: IcmpCode::Redirect(Redirect::Host),
             checksum: 0xaabb,
             data: IcmpData::Redirect {
-                gateway: Ipv4Addr::new(10, 10, 1, 134),
-                header: header,
-                packet: packet,
+                gateway: 0x0a0a0186,
+                header,
+                packet,
             },
         };
 
-        (bytes.to_vec(), expected)
+        (bytes, expected)
     }
 
-    fn get_icmp_unreachable_data() -> (Vec<u8>, IcmpHeader) {
+    fn get_icmp_unreachable_data() -> ([u8; 36], IcmpHeader) {
         let bytes = [
             3, // type
             1, // code
@@ -350,12 +348,12 @@ mod tests {
             checksum: 0xaabb,
             data: IcmpData::Unreachable {
                 nexthop_mtu: 7,
-                header: header,
-                packet: packet,
+                header,
+                packet,
             },
         };
 
-        (bytes.to_vec(), expected)
+        (bytes, expected)
     }
 
     #[test]
@@ -366,11 +364,10 @@ mod tests {
 
     #[test]
     fn icmp_unreachable_incomplete() {
-        let (mut bytes, _) = get_icmp_unreachable_data();
-        bytes.pop();
+        let (bytes, _) = get_icmp_unreachable_data();
 
         assert_eq!(
-            parse_icmp_header(&bytes),
+            parse_icmp_header(&bytes[..35]),
             Err(Err::Incomplete(Needed::new(1)))
         )
     }
@@ -383,11 +380,9 @@ mod tests {
 
     #[test]
     fn icmp_redirect_incomplete() {
-        let (mut bytes, _) = get_icmp_redirect_data();
-        bytes.pop();
-
+        let (bytes, _) = get_icmp_redirect_data();
         assert_eq!(
-            parse_icmp_header(&bytes),
+            parse_icmp_header(&bytes[..35]),
             Err(Err::Incomplete(Needed::new(1)))
         )
     }

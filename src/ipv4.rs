@@ -2,13 +2,10 @@
 
 use crate::ip::{self, IPProtocol};
 use nom::bits;
-use nom::bytes;
 use nom::error::Error;
 use nom::number;
 use nom::sequence;
 use nom::IResult;
-use std::convert::TryFrom;
-use std::net::Ipv4Addr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -23,8 +20,8 @@ pub struct IPv4Header {
     pub ttl: u8,
     pub protocol: IPProtocol,
     pub chksum: u16,
-    pub source_addr: Ipv4Addr,
-    pub dest_addr: Ipv4Addr,
+    pub source_addr: u32,
+    pub dest_addr: u32,
 }
 
 fn flag_frag_offset(input: &[u8]) -> IResult<&[u8], (u8, u16)> {
@@ -32,12 +29,6 @@ fn flag_frag_offset(input: &[u8]) -> IResult<&[u8], (u8, u16)> {
         bits::streaming::take(3u8),
         bits::streaming::take(13u16),
     ))(input)
-}
-
-pub(crate) fn address(input: &[u8]) -> IResult<&[u8], Ipv4Addr> {
-    let (input, ipv4) = bytes::streaming::take(4u8)(input)?;
-
-    Ok((input, Ipv4Addr::from(<[u8; 4]>::try_from(ipv4).unwrap())))
 }
 
 pub fn parse_ipv4_header(input: &[u8]) -> IResult<&[u8], IPv4Header> {
@@ -49,9 +40,8 @@ pub fn parse_ipv4_header(input: &[u8]) -> IResult<&[u8], IPv4Header> {
     let (input, ttl) = number::streaming::be_u8(input)?;
     let (input, protocol) = ip::protocol(input)?;
     let (input, chksum) = number::streaming::be_u16(input)?;
-    let (input, source_addr) = address(input)?;
-    let (input, dest_addr) = address(input)?;
-
+    let (input, source_addr) = number::streaming::be_u32(input)?;
+    let (input, dest_addr) = number::streaming::be_u32(input)?;
     Ok((
         input,
         IPv4Header {
@@ -74,9 +64,8 @@ pub fn parse_ipv4_header(input: &[u8]) -> IResult<&[u8], IPv4Header> {
 #[cfg(test)]
 mod tests {
     use super::{ip::protocol, parse_ipv4_header, IPProtocol, IPv4Header};
-    use std::net::Ipv4Addr;
 
-    const EMPTY_SLICE: &'static [u8] = &[];
+    const EMPTY_SLICE: &[u8] = &[];
     macro_rules! mk_protocol_test {
         ($func_name:ident, $bytes:expr, $correct_proto:expr) => {
             #[test]
@@ -117,8 +106,8 @@ mod tests {
             ttl: 64,
             protocol: IPProtocol::ICMP,
             chksum: 0x22ed,
-            source_addr: Ipv4Addr::new(10, 10, 1, 135),
-            dest_addr: Ipv4Addr::new(10, 10, 1, 180),
+            source_addr: 0x0a0a0187,
+            dest_addr: 0x0a0a01b4,
         };
         assert_eq!(parse_ipv4_header(&bytes), Ok((EMPTY_SLICE, expectation)));
     }

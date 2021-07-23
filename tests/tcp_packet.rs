@@ -2,7 +2,7 @@ extern crate nom;
 extern crate pktparse;
 
 mod tests {
-    use pktparse::tcp::TcpOption;
+    use pktparse::tcp::{TcpOption,WindowScale,MaximumSegmentSize};
     use pktparse::{ipv4, tcp};
 
     #[test]
@@ -18,12 +18,12 @@ mod tests {
             if let Ok((remaining, tcp_hdr)) = tcp::parse_tcp_header(remaining) {
                 assert_eq!(tcp_hdr.source_port, 45250);
                 assert_eq!(tcp_hdr.dest_port, 80);
-                assert_eq!(&remaining[..], b"GET /index.html\x0a");
+                assert_eq!(&remaining, b"GET /index.html\x0a");
             } else {
-                assert!(false);
+                panic!("can't parse tcp header");
             }
         } else {
-            assert!(false);
+            panic!("can't parse ipv4 header");
         }
     }
 
@@ -42,30 +42,25 @@ mod tests {
                 assert_eq!(tcp_hdr.dest_port, 49703);
                 assert_eq!(remaining.len(), 0);
 
-                let options = tcp_hdr.options.unwrap();
-                assert_eq!(options.len(), 5);
-
-                let o = options[0];
-                let expectation = tcp::MaximumSegmentSize { mss: 1338 };
-                assert_eq!(o, TcpOption::MaximumSegmentSize(expectation));
-
-                let o = options[1];
-                assert_eq!(o, TcpOption::NoOperation);
-
-                let o = options[2];
-                let expectation = tcp::WindowScale { scaling: 4 };
-                assert_eq!(o, TcpOption::WindowScale(expectation));
-
-                let o = options[3];
-                assert_eq!(o, TcpOption::SackPermitted);
-
-                let o = options[4];
-                assert_eq!(o, TcpOption::EndOfOptions);
+                let options = match tcp_hdr.options {
+                    Some(options) => options,
+                    None => panic!("no options"),
+                };
+                let expected : [TcpOption; 5] = [
+                    TcpOption::MaximumSegmentSize(MaximumSegmentSize{mss: 1338}),
+                    TcpOption::NoOperation,
+                    TcpOption::WindowScale(WindowScale{scaling: 4}),
+                    TcpOption::SackPermitted,
+                    TcpOption::EndOfOptions,
+                ];
+                for (i, opt) in options.enumerate() {
+                    assert_eq!(expected[i], opt)
+                }
             } else {
-                assert!(false);
+                panic!("can't parse ipv4 header");
             }
         } else {
-            assert!(false);
+            panic!("can't parse tcp header");
         }
     }
 }

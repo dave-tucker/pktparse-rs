@@ -32,7 +32,7 @@ pub fn parse_udp_header(input: &[u8]) -> IResult<&[u8], UdpHeader> {
 #[cfg(test)]
 mod tests {
     use super::{parse_udp_header, UdpHeader};
-    const EMPTY_SLICE: &'static [u8] = &[];
+    const EMPTY_SLICE: &[u8] = &[];
 
     #[test]
     fn udp_header_works() {
